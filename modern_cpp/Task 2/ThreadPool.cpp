@@ -1,7 +1,7 @@
 #include <cstddef>
 #include <mutex>
 
-#include "ThreadPool_classic.hpp"
+#include "ThreadPool.hpp"
 
 ThreadPool::ThreadPool(size_t n) {
   for (size_t i = 0; i < n; ++i) {

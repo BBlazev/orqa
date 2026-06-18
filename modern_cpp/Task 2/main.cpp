@@ -1,44 +1,43 @@
 #include <chrono>
-#include <functional>
-#include <future>
 #include <iostream>
-#include <memory>
 #include <thread>
 
-#include "ThreadPool_classic.hpp"
+#include "ThreadPool.hpp"
+
+struct Sensor {
+  double read(int channel) { return channel * 2.8; }
+};
 
 int main() {
 
-  // ThreadPool t(2);
+  ThreadPool t(4);
+  Sensor sensor;
 
-  // for (int i = 1; i <= 10; i++) {
-  //   t.submit([i] {
-  //     std::cout << "Task: " << i << "\n";
-  //     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  //   });
-  // }
+  auto r = t.enqueue(&Sensor::read, &sensor, 2);
+  std::cout << "Example STRUCT FUNCTION: " << r.get() << "\n";
 
-  /*
-   * zapakiram task koji spava i vraca int 21 u packaged_task
-   * taj task stavljam u shared ptr zato sto std::function ne prima move only
-   * objekte nego copy samo shared ptr se moze kopirati, stoga task-get_future()
-   * radi u wrapperu pokrecem dereferencirani shared ptr task
-   *
-   */
-  auto task = std::make_shared<std::packaged_task<int()>>([] {
-    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-    return 21;
-  });
+  for (int i = 1; i <= 6; ++i) {
+    t.enqueue([i] {
+      std::cout << "Example VOID TASK: " << std::to_string(i) << "\n";
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    });
+  }
 
-  std::future<int> f = task->get_future();
+  std::future<int> sum = t.enqueue([](int a, int b) { return a + b; }, 3, 4);
+  std::cout << "Example INT TASK:" << sum.get() << "\n";
 
-  std::function<void()> wrapper = [task] { (*task)(); };
+  std::vector<std::future<int>> v;
+  for (int i = 1; i <= 5; i++)
+    v.push_back(t.enqueue([](int x) { return x * x; }, i));
 
-  std::cout << "waiting...\n";
+  for (auto &x : v)
+    std::cout << "Example VECTOR TASK: " << x.get() << "\n";
 
-  wrapper();
+  std::future<char> c = t.enqueue([](char c) { return c; }, 'A');
+  std::cout << "Example CHAR TASK: " << c.get() << "\n";
 
-  std::cout << f.get() << "\n";
-
+  std::future<std::string> s =
+      t.enqueue([](std::string str) { return str; }, "std::string funkcija");
+  std::cout << "Example STRING TASK: " << s.get() << "\n";
   return 0;
 }
