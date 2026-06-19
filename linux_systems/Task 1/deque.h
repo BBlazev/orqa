@@ -1,9 +1,11 @@
 
 #include <pthread.h>
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 typedef struct {
   int *buf;
@@ -14,6 +16,16 @@ typedef struct {
   pthread_cond_t not_full;
   pthread_cond_t not_empty;
 } deque_t;
+
+static void deadline(struct timespec *ts, long timeout_ms) {
+  clock_gettime(CLOCK_REALTIME, ts);
+  ts->tv_sec += timeout_ms / 1000;
+  ts->tv_nsec += (timeout_ms % 1000) * 1000000L;
+  if (ts->tv_nsec >= 1000000000L) {
+    ts->tv_sec += 1;
+    ts->tv_nsec -= 1000000000L;
+  }
+}
 
 int deque_init(deque_t *q, size_t capacity) {
   q->buf = (int *)malloc(capacity * sizeof(int));
@@ -43,6 +55,32 @@ void deque_destroy(deque_t *q) {
 
   free(q->buf);
   q->buf = NULL;
+}
+
+int deque_push_back_timed(deque_t *q, int value, long timeout_ms) {
+
+  struct timespec deadline_time;
+  deadline(&deadline_time, timeout_ms);
+
+  pthread_mutex_lock(&q->lock);
+
+  while (q->count == q->cap) {
+    int rc = pthread_cond_timedwait(&q->not_full, &q->lock, &deadline_time);
+    if (rc == ETIMEDOUT) {
+      pthread_mutex_unlock(&q->lock);
+      return -ETIMEDOUT;
+    }
+  }
+
+  size_t slot = (q->head + q->count) % q->cap;
+
+  q->buf[slot] = value;
+  q->count++;
+
+  pthread_cond_signal(&q->not_empty);
+  pthread_mutex_unlock(&q->lock);
+
+  return 0;
 }
 
 void deque_push_back(deque_t *q, int value) {
