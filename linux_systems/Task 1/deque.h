@@ -1,8 +1,11 @@
 
 #include <pthread.h>
+#include <sys/eventfd.h>
+#include <unistd.h>
 
 #include <errno.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -15,6 +18,9 @@ typedef struct {
   pthread_mutex_t lock;
   pthread_cond_t not_full;
   pthread_cond_t not_empty;
+
+  int ev_fd;
+
 } deque_t;
 
 static void deadline(struct timespec *ts, long timeout_ms) {
@@ -36,6 +42,12 @@ int deque_init(deque_t *q, size_t capacity) {
   q->count = 0;
   q->head = 0;
 
+  q->ev_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE);
+  if (q->ev_fd < 0) {
+    free(q->buf);
+    return -1;
+  }
+
   if (pthread_mutex_init(&q->lock, NULL) != 0) {
     free(q->buf);
     return -1;
@@ -49,12 +61,57 @@ int deque_init(deque_t *q, size_t capacity) {
 
 void deque_destroy(deque_t *q) {
 
+  close(q->ev_fd);
+
   pthread_mutex_destroy(&q->lock);
   pthread_cond_destroy(&q->not_full);
   pthread_cond_destroy(&q->not_empty);
 
   free(q->buf);
   q->buf = NULL;
+}
+
+int deque_push_back_try(deque_t *q, int value) {
+  if (pthread_mutex_trylock(&q->lock) != 0)
+    return -EAGAIN;
+
+  if (q->count == q->cap) {
+    pthread_mutex_unlock(&q->lock);
+    return -EAGAIN;
+  }
+
+  size_t slot = (q->head + q->count) % q->cap;
+  q->buf[slot] = value;
+  q->count++;
+
+  uint64_t one = 1;
+  write(q->ev_fd, &one, sizeof(one));
+
+  pthread_cond_signal(&q->not_empty);
+  pthread_mutex_unlock(&q->lock);
+  return 0;
+}
+
+int deque_pop_front_try(deque_t *q, int *out) {
+
+  if (pthread_mutex_trylock(&q->lock) != 0)
+    return -EAGAIN;
+
+  if (q->count == 0) {
+    pthread_mutex_unlock(&q->lock);
+    return -EAGAIN;
+  }
+
+  *out = q->buf[q->head];
+  q->head = (q->head + 1) % q->cap;
+  q->count--;
+  uint64_t one = 1;
+  read(q->ev_fd, &one, sizeof(one));
+
+  pthread_cond_signal(&q->not_full);
+  pthread_mutex_unlock(&q->lock);
+
+  return 0;
 }
 
 int deque_push_back_timed(deque_t *q, int value, long timeout_ms) {
@@ -76,6 +133,8 @@ int deque_push_back_timed(deque_t *q, int value, long timeout_ms) {
 
   q->buf[slot] = value;
   q->count++;
+  uint64_t one = 1;
+  write(q->ev_fd, &one, sizeof(one));
 
   pthread_cond_signal(&q->not_empty);
   pthread_mutex_unlock(&q->lock);
@@ -94,6 +153,8 @@ void deque_push_back(deque_t *q, int value) {
 
   q->buf[slot] = value;
   q->count++;
+  uint64_t one = 1;
+  write(q->ev_fd, &one, sizeof(one));
 
   pthread_cond_signal(&q->not_empty);
   pthread_mutex_unlock(&q->lock);
@@ -111,12 +172,14 @@ bool deque_push_front(deque_t *q, int value) {
   q->head = (q->head + q->cap - 1) % q->cap;
   q->buf[q->head] = value;
   q->count++;
+  uint64_t one = 1;
+  write(q->ev_fd, &one, sizeof(one));
 
   pthread_mutex_unlock(&q->lock);
   return true;
 }
 
-int deque_pop_front(deque_t *q) {
+int deque_pop_front(deque_t *q, int *x) {
 
   pthread_mutex_lock(&q->lock);
 
@@ -126,11 +189,12 @@ int deque_pop_front(deque_t *q) {
   int value = q->buf[q->head];
   q->head = (q->head + 1) % q->cap;
   q->count--;
-
+  uint64_t one = 1;
+  *x = read(q->ev_fd, &one, sizeof(one));
   pthread_cond_signal(&q->not_full);
   pthread_mutex_unlock(&q->lock);
 
-  return value;
+  return *x;
 }
 
 bool deque_pop_back(deque_t *q, int *out) {
@@ -146,7 +210,8 @@ bool deque_pop_back(deque_t *q, int *out) {
 
   *out = q->buf[slot];
   q->count--;
-
+  uint64_t one = 1;
+  read(q->ev_fd, &one, sizeof(one));
   pthread_mutex_unlock(&q->lock);
   return true;
 }

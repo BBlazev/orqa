@@ -1,46 +1,43 @@
+#include <poll.h>
+#include <pthread.h>
 #include <unistd.h>
+
+#include <stdio.h>
 
 #include "deque.h"
 
-void *producer(void *arg) {
-  deque_t *q = arg;
-  for (int i = 1; i <= 5; i++) {
-    usleep(300000);
-    deque_push_back(q, i);
-    printf("produced %d\n", i);
-  }
-  return NULL;
+static int drain_evfd_count(int fd) {
+  int n = 0;
+  uint64_t v;
+  while (read(fd, &v, sizeof(v)) == (ssize_t)sizeof(v))
+    n++;
+  return n;
 }
 
-void *consumer(void *arg) {
-  deque_t *q = arg;
-  for (int i = 0; i < 5; i++) {
-    int v = deque_pop_front(q);
-    printf("        consumed %d\n", v);
-  }
-  return NULL;
+static int evfd_is_ready(int fd) {
+  struct pollfd pfd = {.fd = fd, .events = POLLIN};
+  int rc = poll(&pfd, 1, 0);
+  return rc > 0 && (pfd.revents & POLLIN);
 }
 
 int main(void) {
   deque_t q;
-  deque_init(&q, 2);
+  deque_init(&q, 8);
 
-  pthread_t p, c;
-  // pthread_create(&p, NULL, producer, &q);
-  // pthread_create(&c, NULL, consumer, &q);
+  printf("empty: ready=%d (expect 0)\n", evfd_is_ready(q.ev_fd));
 
-  // pthread_join(p, NULL);
-  // pthread_join(c, NULL);
+  deque_push_back(&q, 10);
+  deque_push_back(&q, 20);
+  deque_push_back(&q, 30);
+  printf("after 3 pushes: count=%zu ready=%d\n", q.count,
+         evfd_is_ready(q.ev_fd));
 
-  deque_push_back(&q, 1);
-  deque_push_back(&q, 2);
-  // deque_push_back(&q, 3);
-  // deque_push_back(&q, 4);
-  // deque_push_back(&q, 5);
-  printf("count=%zu cap=%zu\n", q.count, q.cap);
-  printf("trying timed push...\n");
-  int rc = deque_push_back_timed(&q, 5, 500);
-  printf("rc = %d  (-ETIMEDOUT is %d)\n", rc, -ETIMEDOUT);
+  int x;
+  deque_pop_front(&q, &x); // count 3 -> 2
+  printf("after 1 pop: count=%zu ready=%d\n", q.count, evfd_is_ready(q.ev_fd));
+
+  int fd_units = drain_evfd_count(q.ev_fd);
+  printf("eventfd units drained = %d, count = %zu\n", fd_units, q.count);
 
   deque_destroy(&q);
   return 0;
