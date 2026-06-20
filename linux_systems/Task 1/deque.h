@@ -183,19 +183,21 @@ bool deque_push_front(deque_t *q, int value) {
 int deque_pop_front(deque_t *q, int *x) {
 
   pthread_mutex_lock(&q->lock);
-
   while (q->count == 0)
     pthread_cond_wait(&q->not_empty, &q->lock);
 
   int value = q->buf[q->head];
   q->head = (q->head + 1) % q->cap;
   q->count--;
-  uint64_t one = 1;
-  *x = read(q->ev_fd, &one, sizeof(one));
+
+  uint64_t one;
+  read(q->ev_fd, &one, sizeof(one));
+
   pthread_cond_signal(&q->not_full);
   pthread_mutex_unlock(&q->lock);
+  *x = value;
 
-  return *x;
+  return 0;
 }
 
 bool deque_pop_back(deque_t *q, int *out) {
