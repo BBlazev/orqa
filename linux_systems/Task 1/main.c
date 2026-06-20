@@ -20,24 +20,28 @@ static int evfd_is_ready(int fd) {
   return rc > 0 && (pfd.revents & POLLIN);
 }
 
+void *producer(void *arg) {
+  deque_t *q = arg;
+  for (int i = 1; i <= 5; i++) {
+    usleep(400000);
+    deque_push_back(q, i * 10);
+    printf("producer: pushing %d\n", i * 10);
+  }
+
+  return NULL;
+}
+
 int main(void) {
+
   deque_t q;
   deque_init(&q, 8);
 
-  printf("empty: ready=%d (expect 0)\n", evfd_is_ready(q.ev_fd));
+  pthread_t w, p;
+  pthread_create(&w, NULL, watcher, &q);
+  pthread_create(&p, NULL, producer, &q);
 
-  deque_push_back(&q, 10);
-  deque_push_back(&q, 20);
-  deque_push_back(&q, 30);
-  printf("after 3 pushes: count=%zu ready=%d\n", q.count,
-         evfd_is_ready(q.ev_fd));
-
-  int x;
-  deque_pop_front(&q, &x); // count 3 -> 2
-  printf("after 1 pop: count=%zu ready=%d\n", q.count, evfd_is_ready(q.ev_fd));
-
-  int fd_units = drain_evfd_count(q.ev_fd);
-  printf("eventfd units drained = %d, count = %zu\n", fd_units, q.count);
+  pthread_join(p, NULL);
+  pthread_join(w, NULL);
 
   deque_destroy(&q);
   return 0;

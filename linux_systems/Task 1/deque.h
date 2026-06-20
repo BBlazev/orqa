@@ -1,5 +1,6 @@
 
 #include <pthread.h>
+#include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <unistd.h>
 
@@ -214,4 +215,35 @@ bool deque_pop_back(deque_t *q, int *out) {
   read(q->ev_fd, &one, sizeof(one));
   pthread_mutex_unlock(&q->lock);
   return true;
+}
+
+void *watcher(void *arg) {
+  deque_t *q = arg;
+
+  int epfd = epoll_create1(0);
+  if (!epfd)
+    return NULL;
+
+  struct epoll_event ev = {
+      .events = EPOLLIN,
+      .data.fd = q->ev_fd,
+
+  };
+
+  epoll_ctl(epfd, EPOLL_CTL_ADD, q->ev_fd, &ev);
+
+  for (int i = 0; i < 5; i++) {
+    struct epoll_event out[1];
+
+    int n = epoll_wait(epfd, out, 1, -1);
+
+    if (n > 0 && (out[0].events & EPOLLIN)) {
+      int v;
+      if (deque_pop_front_try(q, &v) == 0)
+        printf("watcher: eppol up, popped %d\n", v);
+    }
+  }
+
+  close(epfd);
+  return NULL;
 }
