@@ -1,0 +1,15 @@
+Razlika između array-a i linked liste je u tome što je array kontinuirani dio memorije, 
+dok je linked lista razbacana po memorijskom prostoru. Da bi pronašli neki N-ti node, moramo proći kroz sve prethodne node.
+
+Glavni razlog zašto je array brži je cache locality. RAM je znatno sporiji u odnosu na CPU. 
+CPU uzima podatke iz memorije u batchevima od obično 64 bajta (cache line) i sprema ih u cache. 
+Kontinuirani array može u nekoliko batcheva spremiti puno susjednih elemenata u cache. 
+Kod linked liste je problem u tome što je razbacana i imamo puno cache misseva. 
+Svaki node je zasebno alociran na heapu, što znači da se nalazi negdje u memoriji. 
+Iteriranje po linked listi je skakanje na novu adresu i svaki korak je vjerojatno cache miss.
+Onih 64 bajta koje smo pokupili sastoji se većinom od podataka koji nam ne trebaju (pointeri, padding).
+
+
+Drugi razlog je hardverski prefetching. Moderni CPU ima prefetcher koji prepoznaje predvidljive 
+obrasce pristupa memoriji i dohvaca podatke prije nego što ih program zatraži. 
+
