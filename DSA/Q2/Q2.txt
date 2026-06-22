@@ -1,0 +1,6 @@
+Problem je što je kod rekurzije koristio stack umjesto heap za ovaj slučaj i dogodio se stack overflow. 
+Stack je odvojeni dio memorije i daleko je manji od heapa. Svaki DFS gura novi stack frame koji u sebi ima return addres, lokalne varijable i parametre, registre itd.
+Ako imamo tisuće foldera kao u produkciji, to znaći tisuće stack frameova i brzo se stack potroši.
+LOkalno testiranje je prošlo jer je bilo malo poziva funkcije. 
+Ovaj problem je moguće popraviti da koristimo strukturu koja je alocirana na heapu, npr. vector. Onda će se moći koristiti
+tih 64 gb memorije.
