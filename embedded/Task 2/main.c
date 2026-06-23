@@ -55,7 +55,6 @@ ButtonState_t debounce_button(uint8_t raw_pin_state) {
   return state;
 }
 
-
 static const char *state_name(ButtonState_t s) {
   switch (s) {
   case BUTTON_RELEASED:
@@ -69,7 +68,8 @@ static const char *state_name(ButtonState_t s) {
   }
 }
 
-static ButtonState_t run_sequence(const char *label, const uint8_t *samples, int n) {
+static ButtonState_t run_sequence(const char *label, const uint8_t *samples,
+                                  int n) {
   printf("\n=== %s ===\n", label);
   printf("tick | pin | state\n");
   printf("-----+-----+----------\n");
@@ -88,25 +88,21 @@ int main(void) {
   ButtonState_t s1 = run_sequence("Scenarij 1: bouncy pritisak {1,0,1,0,0,0}",
                                   bouncy_press, 6);
   printf("--> Ocekivano na kraju: PRESSED. Dobiveno: %s\n", state_name(s1));
-. */
+
   uint8_t hold[] = {0, 0, 0, 0};
   ButtonState_t s2 =
       run_sequence("Scenarij 2: drzanje pritisnutog {0,0,0,0}", hold, 4);
-  printf("--> Ocekivano na kraju: PRESSED. Dobiveno: %s\n",
-         state_name(s2));
-
+  printf("--> Ocekivano na kraju: PRESSED. Dobiveno: %s\n", state_name(s2));
 
   uint8_t bouncy_release[] = {1, 0, 1, 1, 1};
-  ButtonState_t s3 = run_sequence(
-      "Scenarij 3: bouncy otpustanje {1,0,1,1,1}", bouncy_release, 5);
+  ButtonState_t s3 = run_sequence("Scenarij 3: bouncy otpustanje {1,0,1,1,1}",
+                                  bouncy_release, 5);
   printf("--> Ocekivano na kraju: RELEASED. Dobiveno: %s\n", state_name(s3));
 
-
   uint8_t cut[] = {1, 0, 1, 0, 1, 0, 1};
-  ButtonState_t s4 = run_sequence(
-      "Scenarij 4: kratki sum {1,0,1,0,1,0,1}", cut, 7);
-  printf("--> Ocekivano na kraju: RELEASED. Dobiveno: %s\n",
-         state_name(s4));
+  ButtonState_t s4 =
+      run_sequence("Scenarij 4: kratki sum {1,0,1,0,1,0,1}", cut, 7);
+  printf("--> Ocekivano na kraju: RELEASED. Dobiveno: %s\n", state_name(s4));
 
   return 0;
 }
