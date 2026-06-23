@@ -10,7 +10,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-
+/**
+ * Double‑ended queue (deque) with:
+ *   - bounded capacity (circular buffer)
+ *   - blocking & non‑blocking push/pop
+ *   - timed push (with absolute deadline)
+ *   - eventfd for epoll‑based wakeup (used by watcher)
+ *
+ * A single mutex protects all internal state.
+ * Two condition variables allow blocking push/pop.
+ * The eventfd counter tracks the number of items; it is incremented on
+ * every successful push and decremented on every successful pop
+ */
 typedef struct {
   int *buf;
   size_t cap;
@@ -33,7 +44,11 @@ static void deadline(struct timespec *ts, long timeout_ms) {
     ts->tv_nsec -= 1000000000L;
   }
 }
-
+/**
+ * Initialise deque with given capacity.
+ * Returns 0 on success, -1 on allocation/initialisation failure.
+ * Creates an eventfd with EFD_NONBLOCK | EFD_SEMAPHORE.
+ */
 int deque_init(deque_t *q, size_t capacity) {
   q->buf = (int *)malloc(capacity * sizeof(int));
   if (!q->buf)
@@ -92,7 +107,11 @@ int deque_push_back_try(deque_t *q, int value) {
   pthread_mutex_unlock(&q->lock);
   return 0;
 }
-
+/**
+ * Non‑blocking pop from front.
+ * Returns 0 on success, -EAGAIN if mutex is locked or queue is empty.
+ * On success, *out receives the value and the eventfd count is decremented.
+ */
 int deque_pop_front_try(deque_t *q, int *out) {
 
   if (pthread_mutex_trylock(&q->lock) != 0)
@@ -114,7 +133,11 @@ int deque_pop_front_try(deque_t *q, int *out) {
 
   return 0;
 }
-
+/**
+ * Timed push to back. Blocks until space is available or timeout (ms) elapses.
+ * Returns 0 on success, -ETIMEDOUT if timed out.
+ * Uses CLOCK_REALTIME for deadline
+ */
 int deque_push_back_timed(deque_t *q, int value, long timeout_ms) {
 
   struct timespec deadline_time;
@@ -218,7 +241,11 @@ bool deque_pop_back(deque_t *q, int *out) {
   pthread_mutex_unlock(&q->lock);
   return true;
 }
-
+/**
+ * Watcher thread: uses epoll to wait for the eventfd.
+ * When an event arrives, it tries to pop from the front.
+ *
+ */
 void *watcher(void *arg) {
   deque_t *q = arg;
 
